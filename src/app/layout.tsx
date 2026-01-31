@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { AuthProvider } from "@/context/AuthContext";
 import { CartProvider } from "@/context/CartContext";
 import { WishlistProvider } from "@/context/WishlistContext";
 import Navbar from "@/components/Navbar";
@@ -30,16 +31,18 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen flex flex-col bg-background text-foreground`}>
-        <CartProvider>
-          <WishlistProvider>
-            <Navbar />
-            <main className="flex-1">
-              {children}
-            </main>
-            <Footer />
-            <Toaster position="bottom-right" richColors theme="dark" />
-          </WishlistProvider>
-        </CartProvider>
+        <AuthProvider>
+          <CartProvider>
+            <WishlistProvider>
+              <Navbar />
+              <main className="flex-1">
+                {children}
+              </main>
+              <Footer />
+              <Toaster position="bottom-right" richColors theme="dark" />
+            </WishlistProvider>
+          </CartProvider>
+        </AuthProvider>
       </body>
     </html>
   );
