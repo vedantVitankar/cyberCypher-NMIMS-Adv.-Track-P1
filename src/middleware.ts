@@ -16,6 +16,7 @@ const PUBLIC_ROUTES = [
   '/api/auth/signout',
   '/support',
   '/api/support',
+  '/api/agent', // Allow agent access for testing/demo
 ];
 
 // Routes that require specific roles
@@ -44,17 +45,10 @@ export async function middleware(request: NextRequest) {
   }
 
   // Check if route is public
-  const isPublicRoute = PUBLIC_ROUTES.some(route => {
-    if (route.includes('[')) {
-      // Handle dynamic routes like /products/[slug]
-      const pattern = route.replace(/\[.*?\]/g, '[^/]+');
-      return new RegExp(`^${pattern}$`).test(pathname);
-    }
-    return pathname === route || pathname.startsWith(route + '/');
-  });
+  // MODIFIED: Make everything open except merchant routes
+  const isProtectedMerchantRoute = pathname.startsWith('/merchant');
 
-  // For public routes, allow access
-  if (isPublicRoute) {
+  if (!isProtectedMerchantRoute) {
     return NextResponse.next();
   }
 

@@ -3,7 +3,7 @@
     "version": "0.1.0",
     "private": true,
     "scripts": {
-        "dev": "next dev --turbopack",
+        "dev": "next dev",
         "build": "next build",
         "start": "next start",
         "lint": "next lint",
@@ -13,6 +13,7 @@
         "create-test-users": "npx tsx scripts/create-test-users.ts"
     },
     "dependencies": {
+        "@anthropic-ai/sdk": "^0.72.1",
         "@babel/parser": "^7.28.5",
         "@headlessui/react": "^2.2.9",
         "@heroicons/react": "^2.2.0",

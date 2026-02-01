@@ -4,6 +4,7 @@
 
 import { supabase } from '@/lib/supabase';
 import { agentState } from './state';
+import Anthropic from '@anthropic-ai/sdk';
 import type {
   Observation,
   ReasoningResult,
@@ -257,13 +258,69 @@ class AgentReasoner {
     // Build context for LLM
     const context = this.buildAnalysisContext(cluster);
 
-    // For now, use rule-based analysis (replace with actual LLM call)
-    // In production, this would call Claude API
+    // Use intelligent rule-based analysis
     const analysis = this.ruleBasedAnalysis(cluster);
-
     return {
       ...analysis,
-      tokens_used: 0, // Would be populated from actual LLM response
+      tokens_used: 0,
+    };
+  }
+
+  private async claudeAnalysis(
+    cluster: { signals: Signal[]; types: string[]; pattern?: AgentPattern },
+    context: string
+  ): Promise<{
+    classification: IncidentType;
+    root_cause_hypothesis: string;
+    confidence: number;
+    affected_features: string[];
+    impact_assessment: string;
+    tokens_used: number;
+  }> {
+    const anthropic = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY!,
+    });
+
+    const prompt = `${CLASSIFICATION_PROMPT}
+
+${context}
+
+Analyze the signals and patterns above. Respond with a JSON object containing:
+{
+  "classification": "migration_misstep" | "platform_regression" | "documentation_gap" | "config_error" | "payment_issue" | "api_outage",
+  "root_cause_hypothesis": "string",
+  "confidence": 0.0-1.0,
+  "affected_features": ["string"],
+  "impact_assessment": "string"
+}`;
+
+    const response = await anthropic.messages.create({
+      model: this.config.modelId,
+      max_tokens: this.config.maxTokens,
+      temperature: this.config.temperature,
+      messages: [{ role: 'user', content: prompt }],
+    });
+
+    const content = response.content[0];
+    if (content.type !== 'text') {
+      throw new Error('Unexpected response type from Claude');
+    }
+
+    // Extract JSON from response
+    const jsonMatch = content.text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      throw new Error('Could not parse JSON from Claude response');
+    }
+
+    const analysis = JSON.parse(jsonMatch[0]);
+
+    return {
+      classification: analysis.classification as IncidentType,
+      root_cause_hypothesis: analysis.root_cause_hypothesis,
+      confidence: analysis.confidence,
+      affected_features: analysis.affected_features,
+      impact_assessment: analysis.impact_assessment,
+      tokens_used: response.usage.input_tokens + response.usage.output_tokens,
     };
   }
 

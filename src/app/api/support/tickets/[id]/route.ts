@@ -7,7 +7,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const ticket = db.prepare('SELECT * FROM support_tickets WHERE id = ?').get(id);
+    const ticket = db.instance.prepare('SELECT * FROM support_tickets WHERE id = ?').get(id);
 
     if (!ticket) {
       return NextResponse.json(

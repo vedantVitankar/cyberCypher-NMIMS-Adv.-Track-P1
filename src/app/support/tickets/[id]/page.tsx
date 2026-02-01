@@ -68,6 +68,8 @@ export default function TicketDetailPage() {
             setTicket(data.ticket);
             if (data.ticket.agent_response) {
               setReply(data.ticket.agent_response);
+            } else if (data.ticket.resolution && data.ticket.status === 'resolved') {
+               setReply(data.ticket.resolution);
             }
           } else {
             setTicket(MOCK_TICKET);
@@ -87,69 +89,112 @@ export default function TicketDetailPage() {
     fetchTicket();
   }, [id]);
 
-  const runAgentSimulation = async () => {
+  const resolveTicket = async () => {
     setIsAgentRunning(true);
     setAgentLogs([]);
-    setAgentStatus('Initializing...');
+    setAgentStatus('Initiating Resolution Protocol...');
 
-    const steps = [
-      { message: 'Reading ticket context...', type: 'info', delay: 800 },
-      { message: 'Analyzing sentiment and intent...', type: 'analysis', delay: 1500 },
-      { message: 'Intent detected: "Request Refund"', type: 'success', delay: 1000 },
-      { message: `Searching order history for user...`, type: 'search', delay: 1200 },
-      { message: 'Order #ORD-7829 found. Status: Delivered.', type: 'success', delay: 1000 },
-      { message: 'Checking return window policy (30 days)...', type: 'info', delay: 1500 },
-      { message: 'Item within return window. Refund eligible.', type: 'success', delay: 1000 },
-      { message: 'Drafting response and initiating refund process...', type: 'action', delay: 2000 },
-      { message: 'Refund #REF-9921 initiated successfully.', type: 'success', delay: 1000 },
-      { message: 'Ticket marked for resolution.', type: 'decision', delay: 800 },
-    ];
-
-    let currentDelay = 0;
-
-    for (let i = 0; i < steps.length; i++) {
-      const step = steps[i];
-      currentDelay += step.delay;
+    try {
+      // 1. Fetch Codebase Context
+      setAgentStatus('Analyzing Codebase Structure...');
+      const contextRes = await fetch('/api/codebase/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          category: ticket?.category,
+          query: `${ticket?.subject} ${ticket?.body}`
+        }),
+      });
+      const contextData = await contextRes.json();
       
-      setTimeout(() => {
-        setAgentLogs(prev => [...prev, {
-          id: i,
-          message: step.message,
-          type: step.type as any,
-          timestamp: Date.now()
-        }]);
-        setAgentStatus(step.message);
-        
-        // Auto-scroll to bottom of logs
-        const logContainer = document.getElementById('agent-logs');
-        if (logContainer) {
-          logContainer.scrollTop = logContainer.scrollHeight;
-        }
-      }, currentDelay);
-    }
-
-    // Finalize
-    setTimeout(() => {
-      setAgentStatus('Resolution Complete');
-      setReply(`Hello,
-
-I've processed your refund request for Order #ORD-7829. 
-
-Since your item is within the 30-day return window, I've automatically initiated a full refund of $45.00 to your original payment method (Refund Reference: #REF-9921).
-
-You should see the funds appear in your account within 3-5 business days.
-
-Is there anything else I can help you with today?
-
-Best regards,
-Cosmic Support Agent`);
+      const fileTreeContext = contextData.fileTree ? `\nFile Tree Structure:\n${contextData.fileTree}\n` : '';
+      const filesContent = contextData.files?.map((f: any) => `File: ${f.path}\nContent:\n${f.content}\n`).join('\n---\n') || 'No specific code files matched.';
       
-      // Update local ticket status visually
-      if (ticket) {
-        setTicket({ ...ticket, status: 'resolved' });
+      const fullContext = fileTreeContext + '\n---\n' + filesContent;
+
+      // 2. Add initial logs
+      setAgentLogs(prev => [...prev, {
+        id: Date.now(),
+        message: `Context loaded: ${contextData.files?.length || 0} active files + full project structure.`,
+        type: 'info',
+        timestamp: Date.now()
+      }]);
+
+      setAgentStatus('Agent Resolving (Production Mode)...');
+
+      // 3. Call Server-Side Agent API
+      const response = await fetch('/api/agent/resolve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          ticketId: ticket?.id || 'TKT-1293',
+          context: fullContext 
+        }),
+      });
+
+      if (!response.ok) {
+         const errorText = await response.text();
+         throw new Error(`Failed to connect to agent (Status: ${response.status} ${response.statusText}): ${errorText}`);
       }
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+
+      if (!reader) throw new Error('No reader available');
+
+      let stepCount = 0;
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        buffer += chunk;
+        
+        const lines = buffer.split('\n\n');
+        buffer = lines.pop() || ''; // Keep incomplete event
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = JSON.parse(line.slice(6));
+            
+            if (data.type === 'complete') {
+              setAgentStatus('Resolution Complete');
+              setReply(data.resolution);
+              if (ticket) {
+                setTicket({ ...ticket, status: data.status });
+              }
+            } else {
+              setAgentStatus(data.message);
+              setAgentLogs(prev => [...prev, {
+                id: stepCount++,
+                message: data.message,
+                type: data.type,
+                timestamp: Date.now()
+              }]);
+
+              // Auto-scroll
+              const logContainer = document.getElementById('agent-logs');
+              if (logContainer) {
+                logContainer.scrollTop = logContainer.scrollHeight;
+              }
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Agent Error:', error);
+      setAgentStatus('Agent Connection Failed');
+      setAgentLogs(prev => [...prev, {
+        id: Date.now(),
+        message: 'Connection to Agent Core failed. ' + String(error),
+        type: 'info',
+        timestamp: Date.now()
+      }]);
+    } finally {
       setIsAgentRunning(false);
-    }, currentDelay + 1000);
+    }
   };
 
   const handleResolve = async () => {
@@ -214,7 +259,7 @@ Cosmic Support Agent`);
             </CardContent>
           </Card>
 
-          {/* Agent Simulation Overlay / View */}
+          {/* Agent Resolution Overlay / View */}
           {isAgentRunning || agentLogs.length > 0 ? (
             <Card className="bg-neutral-950 border-blue-900/50 relative overflow-hidden">
                {isAgentRunning && (
@@ -224,11 +269,11 @@ Cosmic Support Agent`);
                )}
               <CardHeader className="flex flex-row items-center justify-between pb-2 border-b border-blue-900/20 bg-blue-950/10">
                 <div className="flex items-center gap-2">
-                  <Terminal className="h-4 w-4 text-blue-400" />
-                  <CardTitle className="text-lg text-blue-100">Agent Workspace</CardTitle>
+                  <Bot className="h-4 w-4 text-blue-400" />
+                  <CardTitle className="text-lg text-blue-100">AI Resolution Agent</CardTitle>
                 </div>
                 <Badge variant="outline" className="border-blue-500/30 text-blue-400 bg-blue-950/30 animate-pulse">
-                  {isAgentRunning ? 'RUNNING' : 'COMPLETED'}
+                  {isAgentRunning ? 'RESOLVING' : 'COMPLETED'}
                 </Badge>
               </CardHeader>
               <CardContent className="pt-4 min-h-[300px] flex flex-col font-mono text-sm">
@@ -274,10 +319,10 @@ Cosmic Support Agent`);
                     size="sm" 
                     variant="outline" 
                     className="h-8 border-purple-500/50 text-purple-400 hover:bg-purple-950/30 hover:text-purple-300"
-                    onClick={runAgentSimulation}
+                    onClick={resolveTicket}
                   >
                     <Play className="h-3 w-3 mr-1.5" />
-                    Auto-Resolve with Agent
+                    Auto-Resolve with AI
                   </Button>
                 )}
                 <Badge variant="outline" className="border-blue-900 bg-blue-950/30 text-blue-400 flex items-center gap-1">

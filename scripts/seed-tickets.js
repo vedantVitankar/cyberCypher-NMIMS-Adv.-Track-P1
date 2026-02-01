@@ -1,14 +1,36 @@
-import Database from 'better-sqlite3';
-import path from 'path';
+const Database = require('better-sqlite3');
+const path = require('path');
 
 const DB_PATH = process.env.DATABASE_PATH || path.join(process.cwd(), 'data', 'cosmic.db');
 const db = new Database(DB_PATH);
 
 console.log('Verifying Support Tickets...');
 
-// Clear existing tickets to ensure fresh seed data
-console.log('  Clearing existing tickets...');
-db.prepare("DELETE FROM support_tickets").run();
+// Re-create the table to ensure the schema is up to date with new categories
+console.log('  Recreating support_tickets table...');
+db.exec("DROP TABLE IF EXISTS support_tickets");
+db.exec(`
+CREATE TABLE IF NOT EXISTS support_tickets (
+  id TEXT PRIMARY KEY,
+  merchant_id TEXT REFERENCES merchants(id) ON DELETE SET NULL,
+  external_ticket_id TEXT,
+  subject TEXT NOT NULL,
+  body TEXT NOT NULL,
+  category TEXT CHECK (category IN ('checkout', 'api', 'webhook', 'migration', 'payment', 'general', 'unknown', 'billing', 'shipping', 'order', 'technical', 'returns', 'feature_request', 'account')),
+  priority TEXT DEFAULT 'medium' CHECK (priority IN ('low', 'medium', 'high', 'urgent')),
+  status TEXT DEFAULT 'open' CHECK (status IN ('open', 'in_progress', 'waiting', 'resolved', 'closed')),
+  source TEXT DEFAULT 'manual' CHECK (source IN ('email', 'chat', 'phone', 'manual', 'auto_detected', 'web', 'app')),
+  sentiment_score REAL,
+  auto_classified INTEGER DEFAULT 0,
+  agent_response TEXT,
+  agent_confidence REAL,
+  resolution TEXT,
+  resolved_by TEXT CHECK (resolved_by IN ('agent', 'human', 'auto_resolved') OR resolved_by IS NULL),
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  resolved_at TEXT
+)
+`);
 
 const tickets = []; // Force empty check to always seed
 console.log(`- Total tickets: ${tickets.length}`);
@@ -18,8 +40,8 @@ if (tickets.length === 0) {
     const insertTicket = db.prepare(`
         INSERT INTO support_tickets (
             id, subject, body, category, priority, status, 
-            source, sentiment_score, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            source, sentiment_score, resolution, resolved_by, resolved_at, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const now = new Date().toISOString();
@@ -34,7 +56,9 @@ if (tickets.length === 0) {
             priority: 'high',
             status: 'open',
             source: 'email',
-            sentiment_score: 0.2
+            sentiment_score: 0.2,
+            resolution: 'Identified misconfiguration in Stripe Connect for this merchant. Reconnected the merchant account. Asked user to retry.',
+            resolved_by: null
         },
         {
             id: 'tkt_002',
@@ -44,7 +68,9 @@ if (tickets.length === 0) {
             priority: 'urgent',
             status: 'open',
             source: 'chat',
-            sentiment_score: 0.1
+            sentiment_score: 0.1,
+            resolution: 'Verified transaction logs. Found two identical captures for Order #ORD-8921. Initiated refund of $129.99 via Stripe API (ref: re_3Kx...). Sent confirmation email.',
+            resolved_by: null
         },
         {
             id: 'tkt_003',
@@ -54,7 +80,9 @@ if (tickets.length === 0) {
             priority: 'low',
             status: 'open',
             source: 'email',
-            sentiment_score: 0.6
+            sentiment_score: 0.6,
+            resolution: 'Generated VAT invoice #INV-2024-001 from billing system. Emailed PDF to user.',
+            resolved_by: null
         },
         {
             id: 'tkt_004',
@@ -64,7 +92,9 @@ if (tickets.length === 0) {
             priority: 'medium',
             status: 'open',
             source: 'web',
-            sentiment_score: 0.4
+            sentiment_score: 0.4,
+            resolution: 'Checked logs, found 403 Forbidden on /api/user/payment-methods. Fixed permissions policy for \'update\' action on payment_methods table. User confirmed success.',
+            resolved_by: null
         },
 
         // SHIPPING & ORDERS (5-8)
@@ -76,7 +106,9 @@ if (tickets.length === 0) {
             priority: 'medium',
             status: 'open',
             source: 'chat',
-            sentiment_score: 0.3
+            sentiment_score: 0.3,
+            resolution: 'Checked FedEx tracking. Package delayed at Memphis hub due to weather. Updated user with new ETA of Thursday.',
+            resolved_by: null
         },
         {
             id: 'tkt_006',
@@ -86,7 +118,9 @@ if (tickets.length === 0) {
             priority: 'medium',
             status: 'open',
             source: 'email',
-            sentiment_score: 0.4
+            sentiment_score: 0.4,
+            resolution: 'Verified warehouse pick list. Picker error confirmed. Initiated return label for wrong item and created 0-cost replacement order #ORD-7782-R for Cosmic Black hoodie.',
+            resolved_by: null
         },
         {
             id: 'tkt_007',
@@ -96,7 +130,9 @@ if (tickets.length === 0) {
             priority: 'high',
             status: 'open',
             source: 'chat',
-            sentiment_score: 0.5
+            sentiment_score: 0.5,
+            resolution: 'Order #ORD-9921 status was \'Processing\', so update was possible. Updated shipping_address in database to 123 Mars Colony Blvd. Notified fulfillment center.',
+            resolved_by: null
         },
         {
             id: 'tkt_008',
@@ -106,7 +142,9 @@ if (tickets.length === 0) {
             priority: 'high',
             status: 'open',
             source: 'email',
-            sentiment_score: 0.2
+            sentiment_score: 0.2,
+            resolution: 'Initiated trace with FedEx. Driver noted left at \'Front Porch\'. User checked neighbor, found it. Ticket closed.',
+            resolved_by: null
         },
 
         // TECHNICAL / CODE ERRORS (9-14)
@@ -118,7 +156,9 @@ if (tickets.length === 0) {
             priority: 'high',
             status: 'open',
             source: 'manual',
-            sentiment_score: 0.3
+            sentiment_score: 0.3,
+            resolution: 'Reviewed usage logs. Merchant was making excessive polling requests (10/sec). Advised implementation of webhooks instead of polling. Temporarily increased limit to 20/sec to allow migration.',
+            resolved_by: null
         },
         {
             id: 'tkt_010',
@@ -128,7 +168,9 @@ if (tickets.length === 0) {
             priority: 'urgent',
             status: 'open',
             source: 'web',
-            sentiment_score: 0.2
+            sentiment_score: 0.2,
+            resolution: 'Debugged `CheckoutForm.tsx`. The `cart.total` object was undefined during initial render. Added optional chaining `cart?.total?.price`. Deployed fix.',
+            resolved_by: null
         },
         {
             id: 'tkt_011',
@@ -138,7 +180,9 @@ if (tickets.length === 0) {
             priority: 'high',
             status: 'open',
             source: 'web',
-            sentiment_score: 0.2
+            sentiment_score: 0.2,
+            resolution: 'Investigated server logs. Found SQL syntax error in `updateProfile` server action. Fixed quote escaping in raw query. Deployed patch.',
+            resolved_by: null
         },
         {
             id: 'tkt_012',
@@ -148,7 +192,9 @@ if (tickets.length === 0) {
             priority: 'high',
             status: 'open',
             source: 'email',
-            sentiment_score: 0.3
+            sentiment_score: 0.3,
+            resolution: 'Checked Google Cloud Console. The Authorized Redirect URI was missing \'https://\' prefix. Corrected the URI configuration. Login works now.',
+            resolved_by: null
         },
         {
             id: 'tkt_013',
@@ -158,7 +204,9 @@ if (tickets.length === 0) {
             priority: 'medium',
             status: 'open',
             source: 'web',
-            sentiment_score: 0.4
+            sentiment_score: 0.4,
+            resolution: 'Checked IAM policy for the S3 bucket. The `PutObject` permission was missing for the `merchant-upload-role`. Added policy. Uploads now succeeding.',
+            resolved_by: null
         },
         {
             id: 'tkt_014',
@@ -168,7 +216,9 @@ if (tickets.length === 0) {
             priority: 'medium',
             status: 'open',
             source: 'manual',
-            sentiment_score: 0.5
+            sentiment_score: 0.5,
+            resolution: 'Restarted the search indexing worker process which was stuck. Cleared Redis cache. New products appeared in search within 5 minutes.',
+            resolved_by: null
         },
 
         // RETURNS & REFUNDS (15-17)
@@ -180,17 +230,21 @@ if (tickets.length === 0) {
             priority: 'medium',
             status: 'open',
             source: 'web',
-            sentiment_score: 0.5
+            sentiment_score: 0.5,
+            resolution: 'Approved return request #RET-881. Generated prepaid shipping label. Instructions sent to user.',
+            resolved_by: null
         },
         {
             id: 'tkt_016',
             subject: 'Refund not received yet',
-            body: 'You approved my refund 10 days ago but I still don\'t see it in my bank account.',
+            body: 'You approved my refund 10 days ago but I still don\'t see it. Refund ID: REF-9988.',
             category: 'returns',
             priority: 'high',
             status: 'open',
             source: 'email',
-            sentiment_score: 0.1
+            sentiment_score: 0.1,
+            resolution: 'Traced refund ARN. Bank acknowledged receipt but user\'s bank statement is slow. Provided ARN to user to check with their bank.',
+            resolved_by: null
         },
         {
             id: 'tkt_017',
@@ -200,7 +254,9 @@ if (tickets.length === 0) {
             priority: 'high',
             status: 'open',
             source: 'email',
-            sentiment_score: 0.1
+            sentiment_score: 0.1,
+            resolution: 'Apologized for damage. Requested replacement order #ORD-DAM-001. Filed claim with carrier using user\'s photos.',
+            resolved_by: null
         },
 
         // FEATURE REQUESTS & GENERAL (18-20)
@@ -212,7 +268,9 @@ if (tickets.length === 0) {
             priority: 'low',
             status: 'open',
             source: 'app',
-            sentiment_score: 0.7
+            sentiment_score: 0.7,
+            resolution: 'Added request to product backlog (Item #FR-442). Notified user it\'s scheduled for Q3 release.',
+            resolved_by: null
         },
         {
             id: 'tkt_019',
@@ -222,7 +280,9 @@ if (tickets.length === 0) {
             priority: 'low',
             status: 'open',
             source: 'email',
-            sentiment_score: 0.8
+            sentiment_score: 0.8,
+            resolution: 'Forwarded inquiry to Business Development team (partnerships@cosmic.com). Sent standard acknowledgement to sender.',
+            resolved_by: null
         },
         {
             id: 'tkt_020',
@@ -232,12 +292,17 @@ if (tickets.length === 0) {
             priority: 'medium',
             status: 'open',
             source: 'email',
-            sentiment_score: 0.5
+            sentiment_score: 0.5,
+            resolution: 'Verified identity. Executed `deleteUser` script. Removed all PII from primary DB and logs. Sent final confirmation.',
+            resolved_by: null
         }
     ];
 
     for (const t of sampleTickets) {
-        insertTicket.run(t.id, t.subject, t.body, t.category, t.priority, t.status, t.source, t.sentiment_score, now, now);
+        insertTicket.run(
+            t.id, t.subject, t.body, t.category, t.priority, t.status, 
+            t.source, t.sentiment_score, t.resolution, t.resolved_by, null, now, now
+        );
     }
     console.log(`  ✅ Created ${sampleTickets.length} sample tickets.`);
 } else {

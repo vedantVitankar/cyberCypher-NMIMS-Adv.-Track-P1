@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
     }
 
     const paymentIntent = await stripe.paymentIntents.create({
-      amount: Math.round(amount),
+      amount: Math.round(totalAmount), // INTENTIONAL BUG: totalAmount is not defined (should be 'amount')
       currency: 'usd',
       automatic_payment_methods: { enabled: true },
       metadata: metadata || {},
