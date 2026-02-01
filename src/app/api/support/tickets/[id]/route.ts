@@ -65,9 +65,9 @@ export async function PATCH(
       WHERE id = ?
     `;
 
-    db.prepare(query).run(...values);
+    db.instance.prepare(query).run(...values);
 
-    const updatedTicket = db.prepare('SELECT * FROM support_tickets WHERE id = ?').get(id);
+    const updatedTicket = db.instance.prepare('SELECT * FROM support_tickets WHERE id = ?').get(id);
 
     return NextResponse.json({ ticket: updatedTicket });
   } catch (error) {

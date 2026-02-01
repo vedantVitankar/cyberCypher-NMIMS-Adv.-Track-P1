@@ -44,20 +44,42 @@ export default function TicketDetailPage() {
   const [agentLogs, setAgentLogs] = useState<AgentStep[]>([]);
   const [agentStatus, setAgentStatus] = useState<string>('Idle');
 
+  // Mock ticket data for simulation consistency
+  const MOCK_TICKET: Ticket = {
+    id: 'TKT-1293',
+    subject: 'Return request for recent order',
+    body: "Hi, I recently bought the Cosmic Headphones (Order #ORD-7829) but they don't fit well. Can I get a refund? I've only had them for a few days.",
+    category: 'returns',
+    priority: 'medium',
+    status: 'open',
+    source: 'email',
+    created_at: new Date(Date.now() - 86400000).toISOString(),
+    sentiment_score: 0.45,
+  };
+
   useEffect(() => {
     async function fetchTicket() {
       try {
         const res = await fetch(`/api/support/tickets/${id}`);
         if (res.ok) {
           const data = await res.json();
-          setTicket(data.ticket);
-          // Pre-fill with AI suggestion if available
-          if (data.ticket.agent_response) {
-            setReply(data.ticket.agent_response);
+          // Check if we found a real ticket, otherwise fall back to mock for demo
+          if (data.ticket) {
+            setTicket(data.ticket);
+            if (data.ticket.agent_response) {
+              setReply(data.ticket.agent_response);
+            }
+          } else {
+            setTicket(MOCK_TICKET);
           }
+        } else {
+          // Fallback to mock ticket if API fails (for demo purposes)
+          console.log('Using mock ticket for simulation');
+          setTicket(MOCK_TICKET);
         }
       } catch (error) {
-        console.error('Failed to fetch ticket:', error);
+        console.error('Failed to fetch ticket, using mock:', error);
+        setTicket(MOCK_TICKET);
       } finally {
         setIsLoading(false);
       }

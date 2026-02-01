@@ -29,7 +29,7 @@ export async function GET(request: Request) {
     query += ` ORDER BY created_at DESC LIMIT ?`;
     params.push(limit);
 
-    const products = db.prepare(query).all(...params);
+    const products = db.instance.prepare(query).all(...params);
 
     return NextResponse.json({ products });
   } catch (error) {
