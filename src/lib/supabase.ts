@@ -1,6 +1,8 @@
-import { createClient } from '@supabase/supabase-js';
+// ============================================
+// DATABASE CLIENT (SQLite via better-sqlite3)
+// Provides Supabase-compatible API
+// ============================================
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+export { supabase } from './db/query-builder';
+export { getDatabase, initializeDatabase, closeDatabase } from './db/index';
+export { generateUUID, now, parseJSON, toJSON } from './db/utils';

@@ -4,6 +4,8 @@ import path from "node:path";
 const LOADER = path.resolve(__dirname, 'src/visual-edits/component-tagger-loader.js');
 
 const nextConfig: NextConfig = {
+  // Externalize native Node.js modules for Server Components
+  serverExternalPackages: ['better-sqlite3'],
   images: {
     remotePatterns: [
       {
@@ -23,6 +25,7 @@ const nextConfig: NextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
+  /*
   turbopack: {
     rules: {
       "*.{jsx,tsx}": {
@@ -30,6 +33,7 @@ const nextConfig: NextConfig = {
       }
     }
   }
+  */
 };
 
 export default nextConfig;

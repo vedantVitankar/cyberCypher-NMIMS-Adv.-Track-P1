@@ -14,6 +14,8 @@ const PUBLIC_ROUTES = [
   '/api/auth/signup',
   '/api/auth/session',
   '/api/auth/signout',
+  '/support',
+  '/api/support',
 ];
 
 // Routes that require specific roles

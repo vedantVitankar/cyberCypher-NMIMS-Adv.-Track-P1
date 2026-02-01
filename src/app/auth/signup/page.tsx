@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Orbit, Mail, Lock, Loader2, ArrowRight, User, Store, Phone, Building, CheckCircle2 } from 'lucide-react';
+import { Orbit, Mail, Lock, Loader2, ArrowRight, User, Store, Building, CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -12,7 +12,7 @@ import { toast } from 'sonner';
 import { useAuth } from '@/context/AuthContext';
 import type { UserRole } from '@/lib/auth/types';
 
-const SignupPage = () => {
+const SignupForm = () => {
   const searchParams = useSearchParams();
   const initialRole = (searchParams.get('role') as UserRole) || 'customer';
 
@@ -138,7 +138,7 @@ const SignupPage = () => {
 
   return (
     <div className="min-h-[80vh] flex items-center justify-center px-4 py-12">
-      <div className="w-full max-w-md space-y-6 p-8 rounded-3xl bg-deep-charcoal border border-white/10 shadow-2xl">
+      <div className="w-full max-w-md space-y-8 p-8 rounded-3xl bg-deep-charcoal border border-white/10 shadow-2xl">
         {/* Header */}
         <div className="text-center">
           <Link href="/" className="inline-flex items-center gap-2 text-cosmic-orange mb-6">
@@ -147,8 +147,8 @@ const SignupPage = () => {
               COSMIC<span className="text-cosmic-orange">STORE</span>
             </span>
           </Link>
-          <h2 className="text-2xl font-bold text-white">Create Account</h2>
-          <p className="mt-2 text-white/50 text-sm">Join the cosmic marketplace</p>
+          <h2 className="text-2xl font-bold text-white">Join the Cosmos</h2>
+          <p className="mt-2 text-white/50 text-sm">Create your cosmic account today</p>
         </div>
 
         {/* Role Selection */}
@@ -172,16 +172,16 @@ const SignupPage = () => {
         </Tabs>
 
         {/* Signup Form */}
-        <form onSubmit={handleSignup} className="space-y-4">
+        <form onSubmit={handleSignup} className="space-y-6">
           {/* Full Name */}
           <div className="space-y-2">
-            <Label htmlFor="full_name" className="text-white/60">Full Name *</Label>
+            <Label htmlFor="full_name" className="text-white/60">Full Name</Label>
             <div className="relative">
               <Input
                 id="full_name"
                 name="full_name"
                 type="text"
-                placeholder="John Doe"
+                placeholder="Astro Explorer"
                 required
                 className="bg-cosmic-black border-white/10 pl-10 h-12 focus:border-cosmic-orange"
                 value={formData.full_name}
@@ -194,7 +194,7 @@ const SignupPage = () => {
           {/* Business Name (Merchant only) */}
           {selectedRole === 'merchant' && (
             <div className="space-y-2">
-              <Label htmlFor="business_name" className="text-white/60">Business Name *</Label>
+              <Label htmlFor="business_name" className="text-white/60">Business Name</Label>
               <div className="relative">
                 <Input
                   id="business_name"
@@ -213,13 +213,13 @@ const SignupPage = () => {
 
           {/* Email */}
           <div className="space-y-2">
-            <Label htmlFor="email" className="text-white/60">Email Address *</Label>
+            <Label htmlFor="email" className="text-white/60">Email Address</Label>
             <div className="relative">
               <Input
                 id="email"
                 name="email"
                 type="email"
-                placeholder="you@example.com"
+                placeholder="name@cosmos.com"
                 required
                 className="bg-cosmic-black border-white/10 pl-10 h-12 focus:border-cosmic-orange"
                 value={formData.email}
@@ -229,26 +229,9 @@ const SignupPage = () => {
             </div>
           </div>
 
-          {/* Phone */}
-          <div className="space-y-2">
-            <Label htmlFor="phone" className="text-white/60">Phone Number</Label>
-            <div className="relative">
-              <Input
-                id="phone"
-                name="phone"
-                type="tel"
-                placeholder="+1 (555) 000-0000"
-                className="bg-cosmic-black border-white/10 pl-10 h-12 focus:border-cosmic-orange"
-                value={formData.phone}
-                onChange={handleChange}
-              />
-              <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-white/20" />
-            </div>
-          </div>
-
           {/* Password */}
           <div className="space-y-2">
-            <Label htmlFor="password" className="text-white/60">Password *</Label>
+            <Label htmlFor="password" className="text-white/60">Password</Label>
             <div className="relative">
               <Input
                 id="password"
@@ -262,14 +245,11 @@ const SignupPage = () => {
               />
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-white/20" />
             </div>
-            <p className="text-xs text-white/40">
-              Min 8 characters with uppercase, lowercase, number & special character
-            </p>
           </div>
 
           {/* Confirm Password */}
           <div className="space-y-2">
-            <Label htmlFor="confirmPassword" className="text-white/60">Confirm Password *</Label>
+            <Label htmlFor="confirmPassword" className="text-white/60">Confirm Password</Label>
             <div className="relative">
               <Input
                 id="confirmPassword"
@@ -285,14 +265,6 @@ const SignupPage = () => {
             </div>
           </div>
 
-          {/* Terms */}
-          <p className="text-xs text-white/40 text-center">
-            By creating an account, you agree to our{' '}
-            <Link href="/terms" className="text-cosmic-orange hover:underline">Terms of Service</Link>
-            {' '}and{' '}
-            <Link href="/privacy" className="text-cosmic-orange hover:underline">Privacy Policy</Link>
-          </p>
-
           {/* Submit Button */}
           <Button
             type="submit"
@@ -302,10 +274,7 @@ const SignupPage = () => {
             {isLoading ? (
               <Loader2 className="h-5 w-5 animate-spin" />
             ) : (
-              <>
-                Create {selectedRole === 'merchant' ? 'Merchant' : 'Customer'} Account
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </>
+              'Create Account'
             )}
           </Button>
         </form>
@@ -315,20 +284,30 @@ const SignupPage = () => {
           <div className="absolute inset-0 flex items-center">
             <div className="w-full border-t border-white/10"></div>
           </div>
-          <span className="relative px-4 bg-deep-charcoal text-white/40 text-xs uppercase tracking-widest">
-            Already have an account?
-          </span>
+          <span className="relative px-4 bg-deep-charcoal text-white/40 text-xs uppercase tracking-widest">Already a member?</span>
         </div>
 
         {/* Sign In Link */}
         <Button asChild variant="outline" className="w-full h-12 border-white/10 text-white hover:bg-white/5 group">
           <Link href="/auth/login">
-            Sign In
+            Sign In Instead
             <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
           </Link>
         </Button>
       </div>
     </div>
+  );
+};
+
+const SignupPage = () => {
+  return (
+    <Suspense fallback={
+      <div className="min-h-[80vh] flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-cosmic-orange" />
+      </div>
+    }>
+      <SignupForm />
+    </Suspense>
   );
 };
 

@@ -1,34 +1,19 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
-import { User, Mail, Calendar, LogOut, Loader2, Package, Shield } from 'lucide-react';
+import { useAuth } from '@/context/AuthContext';
+import { User, LogOut, Loader2, Package, Shield } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 
 const ProfilePage = () => {
-  const [user, setUser] = useState<any>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const { user, isLoading, signOut } = useAuth();
   const router = useRouter();
-
-  useEffect(() => {
-    const getUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        router.push('/auth/login');
-        return;
-      }
-      setUser(user);
-      setIsLoading(false);
-    };
-
-    getUser();
-  }, [router]);
 
   const handleLogout = async () => {
     try {
-      await supabase.auth.signOut();
+      await signOut();
       toast.success('Logged out successfully');
       router.push('/');
       router.refresh();
@@ -36,6 +21,12 @@ const ProfilePage = () => {
       toast.error('Failed to logout');
     }
   };
+
+  // Redirect if not logged in
+  if (!isLoading && !user) {
+    router.push('/auth/login');
+    return null;
+  }
 
   if (isLoading) {
     return (
@@ -59,7 +50,7 @@ const ProfilePage = () => {
                   <User className="h-12 w-12 text-cosmic-orange" />
                 </div>
               </div>
-              <h2 className="text-xl font-bold text-white mb-1">{user.user_metadata.full_name || 'Cosmic Explorer'}</h2>
+              <h2 className="text-xl font-bold text-white mb-1">{user.full_name || 'Cosmic Explorer'}</h2>
               <p className="text-white/40 text-sm mb-6">{user.email}</p>
               <Button
                 variant="outline"
@@ -87,7 +78,7 @@ const ProfilePage = () => {
               <div className="space-y-6">
                 <div className="flex flex-col gap-1">
                   <label className="text-xs text-white/40 uppercase tracking-widest font-bold">Full Name</label>
-                  <p className="text-white font-medium">{user.user_metadata.full_name || 'Not provided'}</p>
+                  <p className="text-white font-medium">{user.full_name || 'Not provided'}</p>
                 </div>
                 <div className="flex flex-col gap-1">
                   <label className="text-xs text-white/40 uppercase tracking-widest font-bold">Email Address</label>

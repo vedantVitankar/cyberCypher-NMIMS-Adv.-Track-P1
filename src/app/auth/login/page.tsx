@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Orbit, Mail, Lock, Loader2, ArrowRight, User, Store, Headphones, Shield } from 'lucide-react';
@@ -20,7 +20,7 @@ const roleConfig = {
   admin: { icon: Shield, label: 'Admin', color: 'text-red-400' },
 };
 
-const LoginPage = () => {
+const LoginForm = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
@@ -29,8 +29,6 @@ const LoginPage = () => {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { signIn } = useAuth();
-
-  const redirectTo = searchParams.get('redirect') || ROLE_DASHBOARDS[selectedRole];
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -74,7 +72,7 @@ const LoginPage = () => {
 
   return (
     <div className="min-h-[80vh] flex items-center justify-center px-4 py-12">
-      <div className="w-full max-w-md space-y-6 p-8 rounded-3xl bg-deep-charcoal border border-white/10 shadow-2xl">
+      <div className="w-full max-w-md space-y-8 p-8 rounded-3xl bg-deep-charcoal border border-white/10 shadow-2xl">
         {/* Header */}
         <div className="text-center">
           <Link href="/" className="inline-flex items-center gap-2 text-cosmic-orange mb-6">
@@ -84,7 +82,7 @@ const LoginPage = () => {
             </span>
           </Link>
           <h2 className="text-2xl font-bold text-white">Welcome Back</h2>
-          <p className="mt-2 text-white/50 text-sm">Sign in to your account</p>
+          <p className="mt-2 text-white/50 text-sm">Log in to access your cosmic account</p>
         </div>
 
         {/* Role Selection Tabs */}
@@ -108,14 +106,14 @@ const LoginPage = () => {
         </Tabs>
 
         {/* Login Form */}
-        <form onSubmit={handleLogin} className="space-y-5">
+        <form onSubmit={handleLogin} className="space-y-6">
           <div className="space-y-2">
             <Label htmlFor="email" className="text-white/60">Email Address</Label>
             <div className="relative">
               <Input
                 id="email"
                 type="email"
-                placeholder={`${selectedRole}@example.com`}
+                placeholder="name@cosmos.com"
                 required
                 className="bg-cosmic-black border-white/10 pl-10 h-12 focus:border-cosmic-orange"
                 value={email}
@@ -166,10 +164,7 @@ const LoginPage = () => {
             {isLoading ? (
               <Loader2 className="h-5 w-5 animate-spin" />
             ) : (
-              <>
-                Sign In as {roleConfig[selectedRole].label}
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </>
+              'Sign In'
             )}
           </Button>
         </form>
@@ -180,7 +175,7 @@ const LoginPage = () => {
             <div className="w-full border-t border-white/10"></div>
           </div>
           <span className="relative px-4 bg-deep-charcoal text-white/40 text-xs uppercase tracking-widest">
-            {selectedRole === 'customer' || selectedRole === 'merchant' ? "Don't have an account?" : 'Contact admin for access'}
+            {selectedRole === 'customer' || selectedRole === 'merchant' ? 'New to CosmicStore?' : 'Contact admin for access'}
           </span>
         </div>
 
@@ -203,6 +198,18 @@ const LoginPage = () => {
         )}
       </div>
     </div>
+  );
+};
+
+const LoginPage = () => {
+  return (
+    <Suspense fallback={
+      <div className="min-h-[80vh] flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-cosmic-orange" />
+      </div>
+    }>
+      <LoginForm />
+    </Suspense>
   );
 };
 

@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { Suspense } from 'react';
 import { supabase } from '@/lib/supabase';
 import ProductCard from '@/components/ProductCard';
 import FilterSidebar from '@/components/FilterSidebar';
-import { Search, SlidersHorizontal } from 'lucide-react';
+import ProductSort from '@/components/ProductSort';
+import { Search, SlidersHorizontal, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Select,
@@ -105,7 +106,9 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
                 </SheetTrigger>
                 <SheetContent side="left" className="bg-cosmic-black border-white/10 text-white overflow-y-auto">
                   <div className="py-8">
-                    <FilterSidebar categories={allCategories || []} brands={brands} />
+                    <Suspense fallback={<div className="flex justify-center p-8"><Loader2 className="h-6 w-6 animate-spin text-cosmic-orange" /></div>}>
+                      <FilterSidebar categories={allCategories || []} brands={brands} />
+                    </Suspense>
                   </div>
                 </SheetContent>
               </Sheet>

@@ -44,6 +44,7 @@ export interface Database {
           price: number
           compare_at_price: number | null
           category_id: string | null
+          merchant_id: string | null
           brand: string | null
           stock_quantity: number
           rating: number
@@ -64,6 +65,7 @@ export interface Database {
           price: number
           compare_at_price?: number | null
           category_id?: string | null
+          merchant_id?: string | null
           brand?: string | null
           stock_quantity?: number
           rating?: number
@@ -84,6 +86,7 @@ export interface Database {
           price?: number
           compare_at_price?: number | null
           category_id?: string | null
+          merchant_id?: string | null
           brand?: string | null
           stock_quantity?: number
           rating?: number

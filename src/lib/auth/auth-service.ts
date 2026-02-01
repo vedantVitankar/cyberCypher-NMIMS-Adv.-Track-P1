@@ -1,8 +1,9 @@
 // ============================================
-// AUTH SERVICE - Core Authentication Logic
+// AUTH SERVICE - Simplified Authentication
 // ============================================
 
 import { supabase } from '@/lib/supabase';
+import crypto from 'crypto';
 import type {
   User,
   Session,
@@ -10,86 +11,37 @@ import type {
   SignInRequest,
   AuthResponse,
   UserRole,
-  TokenPayload,
 } from './types';
 
-// Crypto utilities using Web Crypto API
-const encoder = new TextEncoder();
+// ============================================
+// SIMPLE PASSWORD HASHING (PBKDF2 via Node.js crypto)
+// ============================================
 
-async function hashPassword(password: string): Promise<string> {
-  // Generate salt
-  const salt = crypto.getRandomValues(new Uint8Array(16));
-  const saltHex = Array.from(salt).map(b => b.toString(16).padStart(2, '0')).join('');
-
-  // Hash password with salt using PBKDF2
-  const keyMaterial = await crypto.subtle.importKey(
-    'raw',
-    encoder.encode(password),
-    'PBKDF2',
-    false,
-    ['deriveBits']
-  );
-
-  const derivedBits = await crypto.subtle.deriveBits(
-    {
-      name: 'PBKDF2',
-      salt: salt,
-      iterations: 100000,
-      hash: 'SHA-256',
-    },
-    keyMaterial,
-    256
-  );
-
-  const hashHex = Array.from(new Uint8Array(derivedBits))
-    .map(b => b.toString(16).padStart(2, '0'))
-    .join('');
-
-  return `${saltHex}:${hashHex}`;
+function hashPasswordSync(password: string): string {
+  const salt = crypto.randomBytes(16);
+  const hash = crypto.pbkdf2Sync(password, salt, 100000, 32, 'sha256');
+  return `${salt.toString('hex')}:${hash.toString('hex')}`;
 }
 
-async function verifyPassword(password: string, storedHash: string): Promise<boolean> {
-  const [saltHex, hashHex] = storedHash.split(':');
-  if (!saltHex || !hashHex) return false;
+function verifyPasswordSync(password: string, storedHash: string): boolean {
+  try {
+    const [saltHex, hashHex] = storedHash.split(':');
+    if (!saltHex || !hashHex) return false;
 
-  const salt = new Uint8Array(saltHex.match(/.{2}/g)!.map(byte => parseInt(byte, 16)));
-
-  const keyMaterial = await crypto.subtle.importKey(
-    'raw',
-    encoder.encode(password),
-    'PBKDF2',
-    false,
-    ['deriveBits']
-  );
-
-  const derivedBits = await crypto.subtle.deriveBits(
-    {
-      name: 'PBKDF2',
-      salt: salt,
-      iterations: 100000,
-      hash: 'SHA-256',
-    },
-    keyMaterial,
-    256
-  );
-
-  const computedHashHex = Array.from(new Uint8Array(derivedBits))
-    .map(b => b.toString(16).padStart(2, '0'))
-    .join('');
-
-  return computedHashHex === hashHex;
+    const salt = Buffer.from(saltHex, 'hex');
+    const hash = crypto.pbkdf2Sync(password, salt, 100000, 32, 'sha256');
+    return hash.toString('hex') === hashHex;
+  } catch {
+    return false;
+  }
 }
 
 function generateToken(): string {
-  const bytes = crypto.getRandomValues(new Uint8Array(32));
-  return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+  return crypto.randomBytes(32).toString('hex');
 }
 
-async function hashToken(token: string): Promise<string> {
-  const hashBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(token));
-  return Array.from(new Uint8Array(hashBuffer))
-    .map(b => b.toString(16).padStart(2, '0'))
-    .join('');
+function hashToken(token: string): string {
+  return crypto.createHash('sha256').update(token).digest('hex');
 }
 
 // ============================================
@@ -126,7 +78,7 @@ class AuthService {
       }
 
       // Hash password
-      const passwordHash = await hashPassword(data.password);
+      const passwordHash = hashPasswordSync(data.password);
 
       // Determine role (default to customer, admin/support require manual assignment)
       const role: UserRole = data.role === 'merchant' ? 'merchant' : 'customer';
@@ -140,8 +92,8 @@ class AuthService {
           full_name: data.full_name,
           phone: data.phone,
           role: role,
-          status: 'pending_verification',
-          email_verified: false,
+          status: 'active', // Simplified: no email verification required
+          email_verified: true,
         })
         .select()
         .single();
@@ -154,16 +106,13 @@ class AuthService {
       // Create role-specific profile
       await this.createRoleProfile(user.id, role, data);
 
-      // Generate verification token
-      await this.createVerificationToken(user.id, 'email_verification');
-
-      // Log the event
-      await this.logAuthEvent(user.id, 'signup', true);
+      // Create session immediately
+      const session = await this.createSession(user.id);
 
       return {
         success: true,
         user: user as User,
-        requires_verification: true,
+        session: session,
       };
     } catch (error) {
       console.error('Sign up error:', error);
@@ -185,18 +134,13 @@ class AuthService {
         .single();
 
       if (userError || !user) {
-        await this.logAuthEvent(null, 'login_failed', false, 'User not found');
+        console.log('User not found:', data.email);
         return { success: false, error: 'Invalid email or password' };
-      }
-
-      // Check if account is locked
-      if (user.locked_until && new Date(user.locked_until) > new Date()) {
-        return { success: false, error: 'Account is temporarily locked. Please try again later.' };
       }
 
       // Check account status
       if (user.status === 'suspended') {
-        return { success: false, error: 'Account has been suspended. Please contact support.' };
+        return { success: false, error: 'Account has been suspended.' };
       }
 
       if (user.status === 'deactivated') {
@@ -204,47 +148,17 @@ class AuthService {
       }
 
       // Verify password
-      const isValidPassword = await verifyPassword(data.password, user.password_hash);
+      const isValidPassword = verifyPasswordSync(data.password, user.password_hash);
 
       if (!isValidPassword) {
-        // Increment failed attempts
-        const failedAttempts = (user.failed_login_attempts || 0) + 1;
-        const updates: Record<string, unknown> = { failed_login_attempts: failedAttempts };
-
-        // Lock account after 5 failed attempts (30 minutes)
-        if (failedAttempts >= 5) {
-          updates.locked_until = new Date(Date.now() + 30 * 60 * 1000).toISOString();
-        }
-
-        await supabase.from('users').update(updates).eq('id', user.id);
-        await this.logAuthEvent(user.id, 'login_failed', false, 'Invalid password');
-
+        console.log('Invalid password for user:', data.email);
         return { success: false, error: 'Invalid email or password' };
-      }
-
-      // Check email verification for non-admin roles
-      if (!user.email_verified && user.role !== 'admin') {
-        return {
-          success: false,
-          error: 'Please verify your email before signing in',
-          requires_verification: true,
-        };
-      }
-
-      // Check 2FA if enabled
-      if (user.two_factor_enabled) {
-        // Return requiring 2FA (would need additional step)
-        return {
-          success: false,
-          requires_2fa: true,
-          user: user as User,
-        };
       }
 
       // Create session
       const session = await this.createSession(user.id, data.remember_me, ipAddress, userAgent);
 
-      // Update user login info and reset failed attempts
+      // Update user login info
       await supabase
         .from('users')
         .update({
@@ -254,9 +168,6 @@ class AuthService {
           locked_until: null,
         })
         .eq('id', user.id);
-
-      // Log successful login
-      await this.logAuthEvent(user.id, 'login', true, null, ipAddress, userAgent);
 
       return {
         success: true,
@@ -280,7 +191,7 @@ class AuthService {
     userAgent?: string
   ): Promise<Session> {
     const token = generateToken();
-    const tokenHash = await hashToken(token);
+    const tokenHash = hashToken(token);
 
     // Session duration: 7 days if remember me, otherwise 24 hours
     const expiresAt = new Date(
@@ -295,7 +206,6 @@ class AuthService {
         ip_address: ipAddress,
         user_agent: userAgent,
         expires_at: expiresAt.toISOString(),
-        device_info: userAgent ? this.parseUserAgent(userAgent) : null,
       })
       .select()
       .single();
@@ -310,7 +220,7 @@ class AuthService {
 
   async validateSession(token: string): Promise<{ user: User; session: Session } | null> {
     try {
-      const tokenHash = await hashToken(token);
+      const tokenHash = hashToken(token);
 
       const { data: session, error } = await supabase
         .from('user_sessions')
@@ -332,7 +242,7 @@ class AuthService {
       if (userError || !user) return null;
 
       // Check user status
-      if (user.status !== 'active' && user.status !== 'pending_verification') {
+      if (user.status === 'suspended' || user.status === 'deactivated') {
         return null;
       }
 
@@ -352,7 +262,7 @@ class AuthService {
   }
 
   async invalidateSession(token: string): Promise<void> {
-    const tokenHash = await hashToken(token);
+    const tokenHash = hashToken(token);
 
     await supabase
       .from('user_sessions')
@@ -380,45 +290,20 @@ class AuthService {
 
     if (!user) return [];
 
-    // Get role-based permissions
-    const { data: rolePermissions } = await supabase
-      .from('role_permissions')
-      .select('permissions(name)')
-      .eq('role', user.role);
+    // Simple role-based permissions
+    const rolePermissions: Record<string, string[]> = {
+      admin: ['*'], // All permissions
+      support: ['view_users', 'view_orders', 'manage_tickets'],
+      merchant: ['manage_products', 'view_orders', 'manage_store'],
+      customer: ['view_products', 'place_orders', 'manage_profile'],
+    };
 
-    // Get user-specific permissions
-    const { data: userPermissions } = await supabase
-      .from('user_permissions')
-      .select('permissions(name), granted')
-      .eq('user_id', userId)
-      .or('expires_at.is.null,expires_at.gt.' + new Date().toISOString());
-
-    const permissions = new Set<string>();
-
-    // Add role permissions
-    rolePermissions?.forEach((rp: { permissions: { name: string } }) => {
-      if (rp.permissions?.name) {
-        permissions.add(rp.permissions.name);
-      }
-    });
-
-    // Apply user-specific overrides
-    userPermissions?.forEach((up: { permissions: { name: string }; granted: boolean }) => {
-      if (up.permissions?.name) {
-        if (up.granted) {
-          permissions.add(up.permissions.name);
-        } else {
-          permissions.delete(up.permissions.name);
-        }
-      }
-    });
-
-    return Array.from(permissions);
+    return rolePermissions[user.role] || [];
   }
 
   async hasPermission(userId: string, permissionName: string): Promise<boolean> {
     const permissions = await this.getUserPermissions(userId);
-    return permissions.includes(permissionName);
+    return permissions.includes('*') || permissions.includes(permissionName);
   }
 
   // ============================================
@@ -437,7 +322,7 @@ class AuthService {
     }
 
     // Verify current password
-    const isValid = await verifyPassword(currentPassword, user.password_hash);
+    const isValid = verifyPasswordSync(currentPassword, user.password_hash);
     if (!isValid) {
       return { success: false, error: 'Current password is incorrect' };
     }
@@ -449,14 +334,13 @@ class AuthService {
     }
 
     // Hash and update
-    const newPasswordHash = await hashPassword(newPassword);
+    const newPasswordHash = hashPasswordSync(newPassword);
 
     const { error } = await supabase
       .from('users')
       .update({
         password_hash: newPasswordHash,
         password_changed_at: new Date().toISOString(),
-        must_change_password: false,
       })
       .eq('id', userId);
 
@@ -464,75 +348,7 @@ class AuthService {
       return { success: false, error: 'Failed to update password' };
     }
 
-    // Invalidate all sessions except current
-    await this.logAuthEvent(userId, 'password_change', true);
-
     return { success: true };
-  }
-
-  async requestPasswordReset(email: string): Promise<{ success: boolean; error?: string }> {
-    const { data: user } = await supabase
-      .from('users')
-      .select('id')
-      .eq('email', email.toLowerCase())
-      .single();
-
-    if (!user) {
-      // Don't reveal if email exists
-      return { success: true };
-    }
-
-    await this.createVerificationToken(user.id, 'password_reset');
-    // In production, send email with reset link
-
-    return { success: true };
-  }
-
-  // ============================================
-  // VERIFICATION
-  // ============================================
-
-  async verifyEmail(token: string): Promise<AuthResponse> {
-    const tokenHash = await hashToken(token);
-
-    const { data: verificationToken } = await supabase
-      .from('verification_tokens')
-      .select('*')
-      .eq('token_hash', tokenHash)
-      .eq('type', 'email_verification')
-      .is('used_at', null)
-      .gt('expires_at', new Date().toISOString())
-      .single();
-
-    if (!verificationToken) {
-      return { success: false, error: 'Invalid or expired verification link' };
-    }
-
-    // Update user
-    const { data: user, error } = await supabase
-      .from('users')
-      .update({
-        email_verified: true,
-        email_verified_at: new Date().toISOString(),
-        status: 'active',
-      })
-      .eq('id', verificationToken.user_id)
-      .select()
-      .single();
-
-    if (error) {
-      return { success: false, error: 'Failed to verify email' };
-    }
-
-    // Mark token as used
-    await supabase
-      .from('verification_tokens')
-      .update({ used_at: new Date().toISOString() })
-      .eq('id', verificationToken.id);
-
-    await this.logAuthEvent(verificationToken.user_id, 'email_verified', true);
-
-    return { success: true, user: user as User };
   }
 
   // ============================================
@@ -562,82 +378,16 @@ class AuthService {
     }
   }
 
-  private async createVerificationToken(userId: string, type: string): Promise<string> {
-    const token = generateToken();
-    const tokenHash = await hashToken(token);
-
-    await supabase.from('verification_tokens').insert({
-      user_id: userId,
-      token_hash: tokenHash,
-      type: type,
-      expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // 24 hours
-    });
-
-    return token;
-  }
-
-  private async logAuthEvent(
-    userId: string | null,
-    action: string,
-    success: boolean,
-    failureReason?: string | null,
-    ipAddress?: string,
-    userAgent?: string
-  ): Promise<void> {
-    await supabase.from('auth_audit_log').insert({
-      user_id: userId,
-      action: action,
-      success: success,
-      failure_reason: failureReason,
-      ip_address: ipAddress,
-      user_agent: userAgent,
-    });
-  }
-
   private isValidEmail(email: string): boolean {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return emailRegex.test(email);
   }
 
   private validatePassword(password: string): { valid: boolean; error?: string } {
-    if (password.length < 8) {
-      return { valid: false, error: 'Password must be at least 8 characters long' };
-    }
-    if (!/[A-Z]/.test(password)) {
-      return { valid: false, error: 'Password must contain at least one uppercase letter' };
-    }
-    if (!/[a-z]/.test(password)) {
-      return { valid: false, error: 'Password must contain at least one lowercase letter' };
-    }
-    if (!/[0-9]/.test(password)) {
-      return { valid: false, error: 'Password must contain at least one number' };
-    }
-    if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
-      return { valid: false, error: 'Password must contain at least one special character' };
+    if (password.length < 6) {
+      return { valid: false, error: 'Password must be at least 6 characters long' };
     }
     return { valid: true };
-  }
-
-  private parseUserAgent(userAgent: string): { browser?: string; os?: string; device?: string } {
-    // Simple parsing - in production use a proper library
-    const result: { browser?: string; os?: string; device?: string } = {};
-
-    if (userAgent.includes('Chrome')) result.browser = 'Chrome';
-    else if (userAgent.includes('Firefox')) result.browser = 'Firefox';
-    else if (userAgent.includes('Safari')) result.browser = 'Safari';
-    else if (userAgent.includes('Edge')) result.browser = 'Edge';
-
-    if (userAgent.includes('Windows')) result.os = 'Windows';
-    else if (userAgent.includes('Mac')) result.os = 'macOS';
-    else if (userAgent.includes('Linux')) result.os = 'Linux';
-    else if (userAgent.includes('Android')) result.os = 'Android';
-    else if (userAgent.includes('iOS')) result.os = 'iOS';
-
-    if (userAgent.includes('Mobile')) result.device = 'Mobile';
-    else if (userAgent.includes('Tablet')) result.device = 'Tablet';
-    else result.device = 'Desktop';
-
-    return result;
   }
 }
 

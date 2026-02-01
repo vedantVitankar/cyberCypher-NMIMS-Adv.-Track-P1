@@ -3,38 +3,49 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
-import { Package, Search, ChevronRight, Loader2, ArrowLeft } from 'lucide-react';
+import { useAuth } from '@/context/AuthContext';
+import { Package, ChevronRight, Loader2, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 
 const OrdersPage = () => {
   const [orders, setOrders] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const { user, session, isLoading: authLoading } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
     const getOrders = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
+      if (authLoading) return;
+
+      if (!user || !session) {
         router.push('/auth/login');
         return;
       }
 
-      const { data } = await supabase
-        .from('orders')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
+      try {
+        const response = await fetch('/api/orders', {
+          headers: {
+            'x-user-id': user.id,
+            'Authorization': `Bearer ${session.token}`,
+          },
+        });
 
-      setOrders(data || []);
+        if (response.ok) {
+          const data = await response.json();
+          setOrders(data.orders || []);
+        }
+      } catch (error) {
+        console.error('Failed to fetch orders:', error);
+      }
+
       setIsLoading(false);
     };
 
     getOrders();
-  }, [router]);
+  }, [user, session, authLoading, router]);
 
-  if (isLoading) {
+  if (isLoading || authLoading) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-cosmic-orange" />

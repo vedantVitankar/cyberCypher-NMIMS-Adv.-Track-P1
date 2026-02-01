@@ -8,12 +8,10 @@ export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const status = searchParams.get('status') || 'pending';
 
-  const { data, error } = await supabase
+  // Fetch actions
+  const { data: actions, error } = await supabase
     .from('agent_actions')
-    .select(`
-      *,
-      incidents (title, severity, type)
-    `)
+    .select('*')
     .eq('approval_status', status)
     .order('created_at', { ascending: false })
     .limit(50);
@@ -22,7 +20,22 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ actions: data });
+  // Fetch related incidents for actions that have incident_id
+  const actionsWithIncidents = await Promise.all(
+    (actions || []).map(async (action) => {
+      if (action.incident_id) {
+        const { data: incident } = await supabase
+          .from('incidents')
+          .select('title, severity, type')
+          .eq('id', action.incident_id)
+          .single();
+        return { ...action, incidents: incident };
+      }
+      return { ...action, incidents: null };
+    })
+  );
+
+  return NextResponse.json({ actions: actionsWithIncidents });
 }
 
 // Approve or reject an action
